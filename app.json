@@ -1,17 +1,29 @@
 {
   "expo": {
-    "name": "sleep-tracker",
+    "name": "SleepTracker",
     "slug": "sleep-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.yourname.sleeptracker",
+      "appleTeamId": "XXXXXXXXXX",
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.yourname.sleeptracker"
+        ]
+      },
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMotionUsageDescription": "Акселерометр нужен, чтобы замечать движения во сне и будить в лёгкой фазе.",
+        "CFBundleDisplayName": "Трекер сна"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0B1020",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -20,6 +32,46 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Микрофон нужен, чтобы ночью замечать храп. Звук анализируется на телефоне и не сохраняется.",
+          "enableBackgroundRecording": true,
+          "enableBackgroundPlayback": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./assets/alarm.wav"
+          ]
+        }
+      ],
+      "expo-build-properties",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": [
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "Bluetooth нужен, чтобы получать пульс с браслета во время сна."
+        }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Приложение читает данные сна и пульса, которые браслет передаёт в «Здоровье», чтобы оценить ваш сон.",
+          "NSHealthUpdateUsageDescription": "Приложение записывает в «Здоровье» ночи, которые отследило само.",
+          "background": false
+        }
+      ],
+      "@bacons/apple-targets",
+      "expo-asset",
+      "expo-font"
+    ]
   }
 }

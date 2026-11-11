@@ -1,0 +1,79 @@
+# Собирает неподписанный .ipa для установки через Sideloadly с бесплатным Apple ID.
+# Запуск вручную: GitHub → Actions → «iOS (без подписи)» → Run workflow.
+name: iOS (без подписи)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-unsigned
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Выбрать последнюю стабильную Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)
+          echo "Xcode: $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Проверить типы и логику
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Сгенерировать проект Xcode
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Собрать приложение без подписи
+        run: |
+          WORKSPACE=$(ls -d ios/*.xcworkspace | head -1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          echo "SCHEME=$SCHEME" >> "$GITHUB_ENV"
+          set -o pipefail
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            | tail -n 400
+
+      - name: Вложить права доступа и упаковать .ipa
+        run: |
+          APP="build/Build/Products/Release-iphoneos/$SCHEME.app"
+          test -d "$APP"
+          # Временная (ad-hoc) подпись нужна только затем, чтобы внутри файла лежали права
+          # доступа (HealthKit, App Group): Sideloadly заменит её подписью вашего Apple ID.
+          codesign --force --deep --sign - "$APP"
+          WIDGET_ENT=$(ls ios/.targets/*/generated.entitlements | head -1)
+          for APPEX in "$APP"/PlugIns/*.appex; do
+            codesign --force --sign - --entitlements "$WIDGET_ENT" "$APPEX"
+          done
+          codesign --force --sign - --entitlements "ios/$SCHEME/$SCHEME.entitlements" "$APP"
+          codesign -d --entitlements - "$APP"
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry SleepTracker.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SleepTracker-ipa
+          path: SleepTracker.ipa
+          retention-days: 14
