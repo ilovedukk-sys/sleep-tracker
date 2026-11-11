@@ -1,6 +1,6 @@
 # Собирает неподписанный .ipa для установки через Sideloadly с бесплатным Apple ID.
-# Запуск вручную: GitHub → Actions → «iOS (без подписи)» → Run workflow.
-name: iOS (без подписи)
+# Запуск вручную: GitHub → Actions → «iOS unsigned build» → Run workflow.
+name: iOS unsigned build
 
 on:
   workflow_dispatch:
