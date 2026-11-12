@@ -107,7 +107,7 @@ npx eas-cli@latest build --platform ios --profile preview
 
 - `src/lib` — чистая логика: оценка (`score.ts`), фазы (`staging.ts`), храп (`snore.ts`), будильник (`smartAlarm.ts`), сборка ночи (`night.ts`).
 - `src/services` — «Здоровье» (`health.ts`), Bluetooth (`band.ts`), ночной трекинг (`tracker.ts`), виджет (`widget.ts`), хранилище (`storage.ts`).
-- `src/screens`, `src/ui` — экраны и компоненты.
+- `src/screens`, `src/ui` — экраны и компоненты; `src/screens/NightScreen.tsx` — ночной режим и будильник, `src/ui/motion.tsx` — анимации (Reanimated) и вибрация.
 - `targets/widget` — виджет на SwiftUI.
 - `scripts/test-logic.ts` — тесты логики, `scripts/make-sounds.mjs` — генерация звуков.
 

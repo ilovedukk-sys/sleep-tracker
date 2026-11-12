@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-import { fmtDuration, fmtTime, type Night } from '../lib/types';
+import { nextAlarmTime } from '../lib/smartAlarm';
+import { MIN, dayId, fmtDuration, fmtTime, type Night } from '../lib/types';
 import { useStore } from '../store';
 import { Big, Button, Card, Hint, Hypnogram, ROUNDED, ScoreRing, StageBar, Title, scoreColor, useTheme } from '../ui/kit';
+import { Label, MiniBars, MiniDots, MiniRing, MiniStages, SectionHeader, SummaryCard, Value } from '../ui/summary';
+import { Detail, dateLabel } from './History';
 
 const SOURCE: Record<Night['source'], string> = {
   health: 'Браслет через «Здоровье»',
@@ -21,14 +24,14 @@ export function NightDetails({ night, width }: { night: Night; width: number }) 
   const sc = night.score;
   return (
     <>
-      <Card style={{ alignItems: 'center', paddingVertical: 22 }}>
+      <Card i={0} style={{ alignItems: 'center', paddingVertical: 22 }}>
         <ScoreRing score={sc.total} />
         <Text style={{ color: scoreColor(sc.total, c), fontSize: 22, fontWeight: '700', marginTop: 14 }}>{sc.label}</Text>
         <Hint>{SOURCE[night.source]}</Hint>
       </Card>
 
       <View style={{ flexDirection: 'row', gap: 14 }}>
-        <Card style={{ flex: 1 }}>
+        <Card i={1} style={{ flex: 1 }}>
           <Title icon="bed.double.fill">Время сна</Title>
           <Big size={30} parts={[String(Math.floor(sc.sleepMin / 60)), 'ч', String(sc.sleepMin % 60), 'мин']} />
           <Hint>
@@ -36,7 +39,7 @@ export function NightDetails({ night, width }: { night: Night; width: number }) 
           </Hint>
         </Card>
         {night.hr ? (
-          <Card style={{ flex: 1 }}>
+          <Card i={2} style={{ flex: 1 }}>
             <Title icon="heart.fill" color={c.heart}>
               Пульс во сне
             </Title>
@@ -46,18 +49,18 @@ export function NightDetails({ night, width }: { night: Night; width: number }) 
         ) : null}
       </View>
 
-      <Card>
+      <Card i={3}>
         <Title icon="chart.bar.xaxis">Фазы сна</Title>
         <Hypnogram segments={night.segments} snore={night.snore?.episodes} width={width - 64} />
         <StageBar stage="awake" minutes={sc.awakeMin} total={sc.inBedMin} />
         {sc.hasStages ? (
           <>
-            <StageBar stage="rem" minutes={sc.remMin} total={sc.inBedMin} />
-            <StageBar stage="light" minutes={sc.lightMin} total={sc.inBedMin} />
-            <StageBar stage="deep" minutes={sc.deepMin} total={sc.inBedMin} />
+            <StageBar stage="rem" minutes={sc.remMin} total={sc.inBedMin} delay={120} />
+            <StageBar stage="light" minutes={sc.lightMin} total={sc.inBedMin} delay={240} />
+            <StageBar stage="deep" minutes={sc.deepMin} total={sc.inBedMin} delay={360} />
           </>
         ) : (
-          <StageBar stage="light" minutes={sc.sleepMin} total={sc.inBedMin} />
+          <StageBar stage="light" minutes={sc.sleepMin} total={sc.inBedMin} delay={120} />
         )}
         {night.source !== 'health' ? (
           <View style={{ marginTop: 12 }}>
@@ -70,7 +73,7 @@ export function NightDetails({ night, width }: { night: Night; width: number }) 
         ) : null}
       </Card>
 
-      <Card>
+      <Card i={4}>
         <Title icon="star.fill" color={c.warn}>
           Из чего сложилась оценка
         </Title>
@@ -87,7 +90,7 @@ export function NightDetails({ night, width }: { night: Night; width: number }) 
         {!sc.hasStages ? <Hint>Фазы неизвестны, поэтому сумма приведена к шкале 100.</Hint> : null}
       </Card>
 
-      <Card>
+      <Card i={5}>
         <Title icon="waveform" color={c.snore}>
           Храп и пробуждение
         </Title>
@@ -120,12 +123,29 @@ function Line(props: { label: string; value?: number; max?: number; text?: strin
   );
 }
 
-export function Today({ width }: { width: number }) {
+const h = (min: number) => String(Math.floor(Math.round(min) / 60));
+const m = (min: number) => String(Math.round(min) % 60);
+
+/** Время на карточке: для сегодняшней ночи — час пробуждения, для прошлых — дата. */
+function stamp(night: Night): string {
+  return night.id === dayId(Date.now()) ? fmtTime(night.wake) : dateLabel(night);
+}
+
+/** «Сводка» в духе «Здоровья»: карточки последней ночи и будильника. */
+export function Today(props: { width: number; onNavigate?: () => void; goTo?: (tab: 'sleep' | 'history') => void }) {
   const { nights, settings, syncHealth, loadDemo } = useStore();
+  const { c } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
   const night = nights[0];
+
   if (!night) {
     return (
-      <Card>
+      <Card i={0}>
         <Title icon="moon.zzz.fill">Пока нет данных о сне</Title>
         <Hint>
           Подключите «Здоровье» в настройках, чтобы получать сон с Xiaomi Smart Band 9 через Mi Fitness, или начните
@@ -136,9 +156,125 @@ export function Today({ width }: { width: number }) {
       </Card>
     );
   }
+
+  if (open) {
+    return (
+      <Detail
+        night={night}
+        width={props.width}
+        backLabel="Сводка"
+        onBack={() => {
+          setOpen(false);
+          props.onNavigate?.();
+        }}
+      />
+    );
+  }
+
+  const show = () => {
+    setOpen(true);
+    props.onNavigate?.();
+  };
+  const sc = night.score;
+  const week = nights.slice(0, 7).reverse();
+  const pulses = week.filter((n) => n.hr).map((n) => n.hr!.avg);
+  const t = stamp(night);
+  const target = nextAlarmTime(now, settings.alarmHour, settings.alarmMinute);
+
   return (
     <>
-      <NightDetails night={night} width={width} />
+      <SectionHeader title="Последняя ночь" action="Все ночи" onAction={() => props.goTo?.('history')} />
+      <SummaryCard
+        i={1}
+        icon="star.circle.fill"
+        title="Оценка сна"
+        color={scoreColor(sc.total, c)}
+        time={t}
+        onPress={show}
+        accessory={<MiniRing share={sc.total / 100} color={scoreColor(sc.total, c)} />}
+      >
+        <Value parts={[String(sc.total), 'из 100']} sub={sc.label} />
+      </SummaryCard>
+      <SummaryCard
+        i={2}
+        icon="bed.double.fill"
+        title="Сон"
+        color={c.sleep}
+        time={t}
+        onPress={show}
+        accessory={<MiniBars values={week.map((n) => n.score.sleepMin)} color={c.sleep} />}
+      >
+        <Label>Время сна</Label>
+        <Value parts={[h(sc.sleepMin), 'ч', m(sc.sleepMin), 'мин']} />
+      </SummaryCard>
+      <SummaryCard
+        i={3}
+        icon="chart.bar.xaxis"
+        title="Фазы сна"
+        color={c.deep}
+        time={t}
+        onPress={show}
+        accessory={<MiniStages segments={night.segments} />}
+      >
+        {sc.hasStages ? (
+          <>
+            <Label>Глубокий</Label>
+            <Value parts={[h(sc.deepMin), 'ч', m(sc.deepMin), 'мин']} sub={`REM ${fmtDuration(sc.remMin)}`} />
+          </>
+        ) : (
+          <>
+            <Label>Пробуждений</Label>
+            <Value parts={[String(sc.awakenings), 'раз']} />
+          </>
+        )}
+      </SummaryCard>
+      {night.hr ? (
+        <SummaryCard
+          i={4}
+          icon="heart.fill"
+          title="Пульс во сне"
+          color={c.heart}
+          time={t}
+          onPress={show}
+          accessory={pulses.length > 1 ? <MiniDots values={pulses} color={c.heart} /> : null}
+        >
+          <Label>Средний</Label>
+          <Value parts={[String(night.hr.avg), 'уд/мин']} />
+        </SummaryCard>
+      ) : null}
+      {night.snore ? (
+        <SummaryCard
+          i={5}
+          icon="waveform"
+          title="Храп"
+          color={c.snore}
+          time={t}
+          onPress={show}
+          accessory={<MiniBars values={week.map((n) => n.snore?.totalMin ?? 0)} color={c.snore} />}
+        >
+          <Value parts={[String(Math.round(night.snore.totalMin)), 'мин']} sub={`эпизодов: ${night.snore.episodes.length}`} />
+        </SummaryCard>
+      ) : null}
+
+      <SectionHeader i={6} title="Будильник" />
+      <SummaryCard
+        i={7}
+        icon="alarm.fill"
+        title="Умный будильник"
+        color={c.warn}
+        time={settings.alarmEnabled ? 'Вкл.' : 'Выкл.'}
+        onPress={() => props.goTo?.('sleep')}
+      >
+        {settings.alarmEnabled ? (
+          <Value
+            parts={[fmtTime(target), '']}
+            sub={`Окно ${settings.windowMin} мин · через ${fmtDuration((target - now) / MIN)}`}
+          />
+        ) : (
+          <Value parts={['Выключен', '']} sub="Нажмите, чтобы настроить" color={c.dim} />
+        )}
+      </SummaryCard>
+
       {settings.healthRead ? <Button kind="ghost" label="Обновить из «Здоровья»" onPress={() => void syncHealth()} /> : null}
     </>
   );
